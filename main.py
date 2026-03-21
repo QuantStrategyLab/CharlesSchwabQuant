@@ -336,7 +336,18 @@ def run_strategy_core(c, now_ny):
     if trade_logs:
         send_tg_message(f"Trades\n{dashboard}\n" + "\n".join(trade_logs))
     else:
-        print(dashboard, flush=True)
+        no_trade_msg = (
+            f"Heartbeat\n"
+            f"Equity: ${total_equity:,.2f}\n"
+            f"TQQQ: ${mv['TQQQ']:,.2f}  BOXX: ${mv['BOXX']:,.2f}\n"
+            f"QQQI: ${mv['QQQI']:,.2f}  SPYI: ${mv['SPYI']:,.2f}\n"
+            f"Signal: {icon} {reason}\n"
+            f"QQQ: {qqq_p:.2f}  MA200: {ma200:.2f}  Exit: {exit_line:.2f}\n"
+            f"---\n"
+            f"No trades needed"
+        )
+        print(no_trade_msg, flush=True)
+        send_tg_message(no_trade_msg)
 
 
 @app.route("/", methods=["POST", "GET"])
