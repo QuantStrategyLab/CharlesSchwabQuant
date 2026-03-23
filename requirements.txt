@@ -8,3 +8,4 @@ longport
 schwab-py
 google-cloud-secret-manager
 google-auth
+numpy
