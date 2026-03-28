@@ -88,7 +88,8 @@ QQQ: 600.64 | MA200: 580.62 | Exit: 558.97
 | `SCHWAB_API_KEY` | Schwab API key |
 | `SCHWAB_APP_SECRET` | Schwab API secret |
 | `TELEGRAM_TOKEN` | Telegram bot token |
-| `TELEGRAM_CHAT_ID` | Telegram chat ID |
+| `TELEGRAM_CHAT_ID` | Per-service Telegram chat ID. Falls back to `GLOBAL_TELEGRAM_CHAT_ID` if unset. |
+| `GLOBAL_TELEGRAM_CHAT_ID` | Optional shared Telegram chat ID for teams that route multiple quant services to the same destination. |
 | `GOOGLE_CLOUD_PROJECT` | GCP project ID |
 | `INCOME_THRESHOLD_USD` | Equity threshold to enable income layer (default 100000) |
 | `QQQI_INCOME_RATIO` | QQQI share of income layer, 0–1 (default 0.5) |
@@ -177,7 +178,8 @@ QQQ: 600.64 | MA200: 580.62 | Exit: 558.97
 | `SCHWAB_API_KEY` | Schwab API 密钥 |
 | `SCHWAB_APP_SECRET` | Schwab API 密钥 |
 | `TELEGRAM_TOKEN` | Telegram 机器人 Token |
-| `TELEGRAM_CHAT_ID` | Telegram Chat ID |
+| `TELEGRAM_CHAT_ID` | 当前服务自己的 Telegram Chat ID。不填时会回退到 `GLOBAL_TELEGRAM_CHAT_ID`。 |
+| `GLOBAL_TELEGRAM_CHAT_ID` | 可选的共享 Telegram Chat ID。适合多个 quant 服务共用一个接收目标。 |
 | `GOOGLE_CLOUD_PROJECT` | GCP 项目 ID |
 | `INCOME_THRESHOLD_USD` | 收入层启动阈值（默认 100000） |
 | `QQQI_INCOME_RATIO` | QQQI 在收入层中的占比，0–1（默认 0.5） |
