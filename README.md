@@ -128,6 +128,13 @@ Important:
 - `INCOME_THRESHOLD_USD` and `QQQI_INCOME_RATIO` are optional in env sync. If you leave them unset, the app keeps using the code defaults (`100000` and `0.5`).
 - `GCP_SA_KEY`, `TELEGRAM_TOKEN`, and the Schwab API credentials remain repository-specific. Across multiple quant repos, only `GLOBAL_TELEGRAM_CHAT_ID` and `NOTIFY_LANG` are good cross-project shared settings.
 
+### Deployment unit and naming
+
+- `QuantPlatformKit` is only a shared dependency; Cloud Run still deploys `CharlesSchwabQuant` itself.
+- Recommended Cloud Run service name: `charles-schwab-quant`.
+- If you later rename or move this repository, reselect the GitHub source in Cloud Build / Cloud Run trigger instead of assuming the previous source binding will follow the rename.
+- For the shared deployment model and trigger migration checklist, see [`QuantPlatformKit/docs/deployment_model.md`](../QuantPlatformKit/docs/deployment_model.md).
+
 Deploy as a Cloud Run service and trigger the root URL on a schedule (e.g. once per trading day). Entry point: Flask route `"/"` in `main.py`.
 
 ---
@@ -250,5 +257,12 @@ QQQ: 600.64 | MA200: 580.62 | Exit: 558.97
 - 只有在 `ENABLE_GITHUB_ENV_SYNC=true` 时，这个 workflow 才会严格校验并执行同步。没打开时会直接跳过，不影响原来 Google Cloud Trigger + 手工 Cloud Run env 的老流程。
 - `INCOME_THRESHOLD_USD` 和 `QQQI_INCOME_RATIO` 在 env-sync 里是可选项。不填时，程序会继续使用代码里的默认值：`100000` 和 `0.5`。
 - `GCP_SA_KEY`、`TELEGRAM_TOKEN`、Schwab API 凭据仍然是这个仓库自己的 secrets。对多个 quant 仓库来说，真正适合跨项目共享的通常只有 `GLOBAL_TELEGRAM_CHAT_ID` 和 `NOTIFY_LANG`。
+
+### 部署单元和命名建议
+
+- `QuantPlatformKit` 只是共享依赖，不单独部署；Cloud Run 继续只部署 `CharlesSchwabQuant`。
+- 推荐 Cloud Run 服务名：`charles-schwab-quant`。
+- 如果后面改 GitHub 仓库名或再次迁组织，Cloud Build / Cloud Run 里的 GitHub 来源需要重新选择，不要假设旧绑定会自动跟过去。
+- 统一部署模型和触发器迁移清单见 [`QuantPlatformKit/docs/deployment_model.md`](../QuantPlatformKit/docs/deployment_model.md)。
 
 部署为 Cloud Run 服务，定时触发根 URL（如每交易日一次）。入口：`main.py` 中的 Flask 路由 `"/"`。
