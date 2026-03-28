@@ -101,4 +101,5 @@ jobs:
 
           gcloud run services update "${CLOUD_RUN_SERVICE}" \
             --region "${CLOUD_RUN_REGION}" \
+            --remove-env-vars "TELEGRAM_CHAT_ID" \
             --update-env-vars "$(IFS=,; echo "${env_args[*]}")"

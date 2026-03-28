@@ -88,8 +88,7 @@ QQQ: 600.64 | MA200: 580.62 | Exit: 558.97
 | `SCHWAB_API_KEY` | Schwab API key |
 | `SCHWAB_APP_SECRET` | Schwab API secret |
 | `TELEGRAM_TOKEN` | Telegram bot token |
-| `TELEGRAM_CHAT_ID` | Per-service Telegram chat ID. Falls back to `GLOBAL_TELEGRAM_CHAT_ID` if unset. |
-| `GLOBAL_TELEGRAM_CHAT_ID` | Optional shared Telegram chat ID for teams that route multiple quant services to the same destination. |
+| `GLOBAL_TELEGRAM_CHAT_ID` | Telegram chat ID used by this service. |
 | `GOOGLE_CLOUD_PROJECT` | GCP project ID |
 | `INCOME_THRESHOLD_USD` | Equity threshold to enable income layer (default 100000) |
 | `QQQI_INCOME_RATIO` | QQQI share of income layer, 0–1 (default 0.5) |
@@ -119,7 +118,7 @@ Recommended setup:
   - `GLOBAL_TELEGRAM_CHAT_ID`
   - `NOTIFY_LANG`
 
-On every push to `main`, the workflow updates the existing Cloud Run service with the values above. It does **not** remove legacy `TELEGRAM_CHAT_ID`, so existing deployments keep working. Once you have confirmed the service is reading `GLOBAL_TELEGRAM_CHAT_ID` as intended, you can remove `TELEGRAM_CHAT_ID` from Cloud Run manually.
+On every push to `main`, the workflow updates the existing Cloud Run service with the values above and removes `TELEGRAM_CHAT_ID`.
 
 Important:
 
@@ -210,8 +209,7 @@ QQQ: 600.64 | MA200: 580.62 | Exit: 558.97
 | `SCHWAB_API_KEY` | Schwab API 密钥 |
 | `SCHWAB_APP_SECRET` | Schwab API 密钥 |
 | `TELEGRAM_TOKEN` | Telegram 机器人 Token |
-| `TELEGRAM_CHAT_ID` | 当前服务自己的 Telegram Chat ID。不填时会回退到 `GLOBAL_TELEGRAM_CHAT_ID`。 |
-| `GLOBAL_TELEGRAM_CHAT_ID` | 可选的共享 Telegram Chat ID。适合多个 quant 服务共用一个接收目标。 |
+| `GLOBAL_TELEGRAM_CHAT_ID` | 这个服务使用的 Telegram Chat ID。 |
 | `GOOGLE_CLOUD_PROJECT` | GCP 项目 ID |
 | `INCOME_THRESHOLD_USD` | 收入层启动阈值（默认 100000） |
 | `QQQI_INCOME_RATIO` | QQQI 在收入层中的占比，0–1（默认 0.5） |
@@ -241,7 +239,7 @@ QQQ: 600.64 | MA200: 580.62 | Exit: 558.97
   - `GLOBAL_TELEGRAM_CHAT_ID`
   - `NOTIFY_LANG`
 
-每次 push 到 `main` 时，这个 workflow 会把上面这些值同步到现有 Cloud Run 服务里。它**不会主动删除**旧的 `TELEGRAM_CHAT_ID`，这样现有部署不会被硬切断。等你确认服务已经按预期读取 `GLOBAL_TELEGRAM_CHAT_ID` 后，再手动删除旧的 Cloud Run env 即可。
+每次 push 到 `main` 时，这个 workflow 会把上面这些值同步到现有 Cloud Run 服务里，并删除旧的 `TELEGRAM_CHAT_ID`。
 
 注意：
 

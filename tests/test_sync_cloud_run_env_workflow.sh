@@ -25,7 +25,4 @@ grep -Fq 'if [ -n "${QQQI_INCOME_RATIO:-}" ]; then' "$workflow_file"
 grep -Fq 'env_args+=("QQQI_INCOME_RATIO=${QQQI_INCOME_RATIO}")' "$workflow_file"
 grep -Fq 'env_args+=("GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}")' "$workflow_file"
 grep -Fq "if: steps.config.outputs.enabled == 'true'" "$workflow_file"
-if grep -Fq -- "--remove-env-vars TELEGRAM_CHAT_ID" "$workflow_file"; then
-  echo "workflow should not force-remove TELEGRAM_CHAT_ID; keep backward compatibility" >&2
-  exit 1
-fi
+grep -Fq -- '--remove-env-vars "TELEGRAM_CHAT_ID"' "$workflow_file"

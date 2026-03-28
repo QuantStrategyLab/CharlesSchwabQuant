@@ -47,15 +47,14 @@ def install_stub_modules():
     return patch.dict(sys.modules, modules)
 
 
-class SharedChatIdFallbackTests(unittest.TestCase):
-    def test_global_telegram_chat_id_is_used_when_service_chat_id_missing(self):
+class SharedChatIdTests(unittest.TestCase):
+    def test_global_telegram_chat_id_is_used(self):
         with install_stub_modules():
             with patch.dict(
                 os.environ,
                 {
                     "SCHWAB_API_KEY": "app-key",
                     "SCHWAB_APP_SECRET": "app-secret",
-                    "TELEGRAM_CHAT_ID": "",
                     "GLOBAL_TELEGRAM_CHAT_ID": "shared-chat-id",
                 },
                 clear=False,
