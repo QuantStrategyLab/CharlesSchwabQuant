@@ -1,22 +1,21 @@
 import os
-import time
 import traceback
 import requests
-import numpy as np
-import pandas as pd
-import pytz
-import pandas_market_calendars as mcal
-from datetime import datetime
 from flask import Flask
 import google.auth
 
-from quant_platform_kit.common.models import OrderIntent
+from application.rebalance_service import run_strategy_core as run_rebalance_cycle
+from entrypoints.cloud_run import is_market_open_today
 from quant_platform_kit.schwab import (
     fetch_account_snapshot,
     fetch_default_daily_price_history_candles,
     fetch_quotes,
     get_client_from_secret,
     submit_equity_order,
+)
+from strategy.allocation import (
+    get_hybrid_allocation as strategy_get_hybrid_allocation,
+    get_income_ratio as strategy_get_income_ratio,
 )
 
 app = Flask(__name__)
@@ -179,246 +178,70 @@ def send_tg_message(message):
 
 
 def get_hybrid_allocation(total_equity_usd, qqq_p, stop_line):
-    if total_equity_usd <= ALLOC_TIER2_BREAKPOINTS[0]:
-        target_agg = float(np.interp(total_equity_usd, ALLOC_TIER1_BREAKPOINTS, ALLOC_TIER1_VALUES))
-    elif total_equity_usd <= ALLOC_TIER2_BREAKPOINTS[1]:
-        target_agg = float(np.interp(total_equity_usd, ALLOC_TIER2_BREAKPOINTS, ALLOC_TIER2_VALUES))
-    else:
-        if qqq_p <= stop_line:
-            target_agg = 0.0
-        else:
-            risk = max(0.01, (qqq_p - stop_line) / qqq_p * RISK_LEVERAGE_FACTOR)
-            target_agg = min(RISK_AGG_CAP, RISK_NUMERATOR / risk)
-    target_yield = max(0.0, 1.0 - target_agg)
-    return target_agg, target_yield
+    return strategy_get_hybrid_allocation(
+        total_equity_usd,
+        qqq_p,
+        stop_line,
+        alloc_tier1_breakpoints=ALLOC_TIER1_BREAKPOINTS,
+        alloc_tier1_values=ALLOC_TIER1_VALUES,
+        alloc_tier2_breakpoints=ALLOC_TIER2_BREAKPOINTS,
+        alloc_tier2_values=ALLOC_TIER2_VALUES,
+        risk_leverage_factor=RISK_LEVERAGE_FACTOR,
+        risk_agg_cap=RISK_AGG_CAP,
+        risk_numerator=RISK_NUMERATOR,
+    )
 
 
 def get_income_ratio(total_equity_usd: float) -> float:
-    """
-    Income layer target as fraction of total equity. Not used for strategy-layer sizing.
-    Below INCOME_THRESHOLD_USD: 0. Between threshold and 2x: linear to 40%. Above 2x: 60% cap.
-    """
-    if total_equity_usd < INCOME_THRESHOLD_USD:
-        return 0.0
-    if total_equity_usd <= 2 * INCOME_THRESHOLD_USD:
-        return float(np.interp(
-            total_equity_usd,
-            [INCOME_THRESHOLD_USD, 2 * INCOME_THRESHOLD_USD],
-            [0.0, 0.40],
-        ))
-    return 0.60
+    return strategy_get_income_ratio(
+        total_equity_usd,
+        income_threshold_usd=INCOME_THRESHOLD_USD,
+    )
 
 
 # ---------------------------------------------------------------------------
 # Strategy execution
 # ---------------------------------------------------------------------------
 def run_strategy_core(c, now_ny):
-    # Fetch QQQ history
-    df_qqq = pd.DataFrame(fetch_default_daily_price_history_candles(c, 'QQQ'))
-    qqq_p = df_qqq['close'].iloc[-1]
-    ma200 = df_qqq['close'].rolling(200).mean().iloc[-1]
-
-    tr = pd.concat([
-        df_qqq['high'] - df_qqq['low'],
-        abs(df_qqq['high'] - df_qqq['close'].shift(1)),
-        abs(df_qqq['low'] - df_qqq['close'].shift(1))
-    ], axis=1).max(axis=1)
-    atr_pct = tr.rolling(14).mean().iloc[-1] / qqq_p
-    exit_line = ma200 * max(EXIT_LINE_FLOOR, min(EXIT_LINE_CAP, 1.0 - (atr_pct * ATR_EXIT_SCALE)))
-    entry_line = ma200 * max(ENTRY_LINE_FLOOR, min(ENTRY_LINE_CAP, 1.0 + (atr_pct * ATR_ENTRY_SCALE)))
-
-    # Account snapshot (strategy symbols only)
-    strategy_symbols = ["TQQQ", "BOXX", "SPYI", "QQQI"]
-    snapshot = fetch_account_snapshot(c, strategy_symbols=strategy_symbols)
-    acct_hash = snapshot.metadata['account_hash']
-    cash_for_equity = float(snapshot.metadata.get('cash_available_for_trading', 0.0))
-    real_buying_power = float(snapshot.buying_power or 0.0)
-
-    mv = {s: 0.0 for s in strategy_symbols}
-    qty = {s: 0 for s in strategy_symbols}
-    for position in snapshot.positions:
-        if position.symbol in mv:
-            mv[position.symbol] = float(position.market_value)
-            qty[position.symbol] = int(position.quantity)
-
-    total_equity = snapshot.total_equity
-
-    # Income layer: target size from total equity only
-    income_ratio = get_income_ratio(total_equity)
-    target_income_val = total_equity * income_ratio
-    target_spyi_val = target_income_val * (1.0 - QQQI_INCOME_RATIO)
-    target_qqqi_val = target_income_val * QQQI_INCOME_RATIO
-
-    # Strategy layer: remainder allocated to TQQQ + BOXX
-    strategy_equity = max(0.0, total_equity - target_income_val)
-    reserved = strategy_equity * CASH_RESERVE_RATIO
-    agg_ratio, _ = get_hybrid_allocation(strategy_equity, qqq_p, exit_line)
-
-    # TQQQ signal: staged exit when between MA200 and exit_line, full exit below exit_line
-    target_tqqq_ratio, icon, reason = 0.0, "idle", "no signal"
-    if qty["TQQQ"] > 0:
-        if qqq_p < exit_line:
-            target_tqqq_ratio, icon, reason = 0.0, "exit", "below exit line"
-        elif qqq_p < ma200:
-            target_tqqq_ratio, icon, reason = agg_ratio * 0.33, "reduce", "between MA200 and exit"
-        else:
-            target_tqqq_ratio, icon, reason = agg_ratio, "hold", "above MA200"
-    elif qqq_p > entry_line:
-        target_tqqq_ratio, icon, reason = agg_ratio, "entry", "above entry line"
-
-    target_tqqq_val = strategy_equity * target_tqqq_ratio
-    target_boxx_val = max(0.0, (strategy_equity - reserved) - target_tqqq_val)
-    threshold = total_equity * REBALANCE_THRESHOLD_RATIO
-
-    sig_display = signal_text(icon)
-    sep = t("separator")
-    dashboard = (
-        f"{t('dashboard_label')} | {t('equity')}: ${total_equity:,.2f}\n"
-        f"TQQQ: ${mv['TQQQ']:,.2f} | SPYI: ${mv['SPYI']:,.2f} | QQQI: ${mv['QQQI']:,.2f} | BOXX: ${mv['BOXX']:,.2f}\n"
-        f"{t('buying_power')}: ${real_buying_power:,.2f} | {t('signal_label')}: {sig_display}\n"
-        f"QQQ: {qqq_p:.2f} | MA200: {ma200:.2f} | Exit: {exit_line:.2f}"
+    return run_rebalance_cycle(
+        c,
+        now_ny,
+        fetch_default_daily_price_history_candles=fetch_default_daily_price_history_candles,
+        fetch_account_snapshot=fetch_account_snapshot,
+        fetch_quotes=fetch_quotes,
+        submit_equity_order=submit_equity_order,
+        send_tg_message=send_tg_message,
+        signal_text=signal_text,
+        translator=t,
+        income_threshold_usd=INCOME_THRESHOLD_USD,
+        qqqi_income_ratio=QQQI_INCOME_RATIO,
+        cash_reserve_ratio=CASH_RESERVE_RATIO,
+        rebalance_threshold_ratio=REBALANCE_THRESHOLD_RATIO,
+        limit_buy_premium=LIMIT_BUY_PREMIUM,
+        sell_settle_delay_sec=SELL_SETTLE_DELAY_SEC,
+        alloc_tier1_breakpoints=ALLOC_TIER1_BREAKPOINTS,
+        alloc_tier1_values=ALLOC_TIER1_VALUES,
+        alloc_tier2_breakpoints=ALLOC_TIER2_BREAKPOINTS,
+        alloc_tier2_values=ALLOC_TIER2_VALUES,
+        risk_leverage_factor=RISK_LEVERAGE_FACTOR,
+        risk_agg_cap=RISK_AGG_CAP,
+        risk_numerator=RISK_NUMERATOR,
+        atr_exit_scale=ATR_EXIT_SCALE,
+        atr_entry_scale=ATR_ENTRY_SCALE,
+        exit_line_floor=EXIT_LINE_FLOOR,
+        exit_line_cap=EXIT_LINE_CAP,
+        entry_line_floor=ENTRY_LINE_FLOOR,
+        entry_line_cap=ENTRY_LINE_CAP,
     )
-
-    # Quotes and order execution
-    quote_snapshots = fetch_quotes(c, strategy_symbols)
-    quotes = {
-        sym: {
-            'lastPrice': quote_snapshots[sym].last_price,
-            'askPrice': quote_snapshots[sym].ask_price or quote_snapshots[sym].last_price,
-        }
-        for sym in strategy_symbols
-    }
-    trade_logs = []
-
-    def execute_fire_forget(symbol, action_type, quantity, price=None):
-        if quantity <= 0:
-            return False
-        try:
-            p_str = "{:.2f}".format(price) if price else None
-            if action_type == 'SELL':
-                order_intent = OrderIntent(symbol=symbol, side='sell', quantity=quantity)
-            elif action_type == 'BUY_LIMIT':
-                order_intent = OrderIntent(
-                    symbol=symbol,
-                    side='buy',
-                    quantity=quantity,
-                    order_type='limit',
-                    limit_price=float(price),
-                )
-            elif action_type == 'BUY_MARKET':
-                order_intent = OrderIntent(symbol=symbol, side='buy', quantity=quantity)
-            else:
-                return False
-            report = submit_equity_order(c, acct_hash, order_intent)
-            success = report.status == "accepted"
-            info = report.broker_order_id if success else report.raw_payload.get("detail", report.status)
-            if success:
-                if action_type == 'SELL':
-                    trade_logs.append(
-                        f"✅ 📉 {t('market_sell_cmd')} {symbol}: {quantity}{t('shares')} (ID: {info})"
-                    )
-                elif action_type == 'BUY_LIMIT':
-                    trade_logs.append(
-                        f"✅ 💰 {t('limit_buy_cmd')} {symbol} (${p_str}): {quantity}{t('shares')} {t('submitted')} (ID: {info})"
-                    )
-                elif action_type == 'BUY_MARKET':
-                    trade_logs.append(
-                        f"✅ 📈 {t('market_buy_cmd')} {symbol}: {quantity}{t('shares')} (ID: {info})"
-                    )
-                return True
-            else:
-                if action_type == 'SELL':
-                    msg = f"❌ {t('market_sell')} {symbol}: {quantity}{t('shares')} {t('failed')} - {info}"
-                elif action_type == 'BUY_LIMIT':
-                    msg = f"❌ {t('limit_buy')} {symbol}: {quantity}{t('shares')} {t('failed')} - {info}"
-                else:
-                    msg = f"❌ {t('market_buy')} {symbol}: {quantity}{t('shares')} {t('failed')} - {info}"
-                trade_logs.append(msg)
-                send_tg_message(msg)
-                return False
-        except Exception as e:
-            msg = f"🚨 {symbol} {t('buy_label')} {quantity}{t('shares')} {t('exception')}: {e}"
-            trade_logs.append(msg)
-            send_tg_message(msg)
-            return False
-
-    # Sell phase
-    sell_executed = False
-    if mv["TQQQ"] > (target_tqqq_val + threshold):
-        q = int((mv["TQQQ"] - target_tqqq_val) // quotes["TQQQ"]['lastPrice'])
-        execute_fire_forget('TQQQ', 'SELL', q)
-        sell_executed = True
-    if mv["SPYI"] > (target_spyi_val + threshold):
-        q = int((mv["SPYI"] - target_spyi_val) // quotes["SPYI"]['lastPrice'])
-        execute_fire_forget('SPYI', 'SELL', q)
-        sell_executed = True
-    if mv["QQQI"] > (target_qqqi_val + threshold):
-        q = int((mv["QQQI"] - target_qqqi_val) // quotes["QQQI"]['lastPrice'])
-        execute_fire_forget('QQQI', 'SELL', q)
-        sell_executed = True
-    if mv["BOXX"] > (target_boxx_val + threshold):
-        q = int((mv["BOXX"] - target_boxx_val) // quotes["BOXX"]['lastPrice'])
-        execute_fire_forget('BOXX', 'SELL', q)
-        sell_executed = True
-
-    if sell_executed:
-        time.sleep(SELL_SETTLE_DELAY_SEC)
-
-    # Buy phase
-    est_buying_power = max(0, real_buying_power - reserved)
-    for sym, target_val in [('SPYI', target_spyi_val), ('QQQI', target_qqqi_val), ('TQQQ', target_tqqq_val)]:
-        if mv[sym] < (target_val - threshold):
-            amt_to_spend = min(target_val - mv[sym], est_buying_power)
-            if amt_to_spend > 0:
-                ask = quotes[sym]['askPrice']
-                q = int(amt_to_spend // ask)
-                if q > 0:
-                    limit_p = round(ask * LIMIT_BUY_PREMIUM, 2)
-                    execute_fire_forget(sym, 'BUY_LIMIT', q, limit_p)
-                    est_buying_power -= (q * limit_p)
-
-    if est_buying_power > quotes["BOXX"]['lastPrice'] * 2:
-        q = int(est_buying_power // quotes["BOXX"]['lastPrice'])
-        if q > 0:
-            execute_fire_forget('BOXX', 'BUY_MARKET', q)
-
-    if trade_logs:
-        trade_msg = (
-            f"{t('trade_header')}\n"
-            f"📊 {t('signal_label')}: {sig_display}\n\n"
-            f"{dashboard}\n"
-            f"{sep}\n"
-            + "\n".join(trade_logs)
-        )
-        send_tg_message(trade_msg)
-    else:
-        no_trade_msg = (
-            f"{t('heartbeat_header')}\n"
-            f"💰 {t('equity')}: ${total_equity:,.2f}\n"
-            f"{sep}\n"
-            f"TQQQ: ${mv['TQQQ']:,.2f}  BOXX: ${mv['BOXX']:,.2f}\n"
-            f"QQQI: ${mv['QQQI']:,.2f}  SPYI: ${mv['SPYI']:,.2f}\n"
-            f"{sep}\n"
-            f"🎯 {t('signal_label')}: {sig_display}\n"
-            f"QQQ: {qqq_p:.2f} | MA200: {ma200:.2f} | Exit: {exit_line:.2f}\n"
-            f"{sep}\n"
-            f"{t('no_trades')}"
-        )
-        print(no_trade_msg, flush=True)
-        send_tg_message(no_trade_msg)
 
 
 @app.route("/", methods=["POST", "GET"])
 def handle_schwab():
     try:
         c = get_client_from_secret(PROJECT_ID, SECRET_ID, APP_KEY, APP_SECRET, token_path=TOKEN_PATH)
-        tz_ny = pytz.timezone('America/New_York')
-        now_ny = datetime.now(tz_ny)
-        nyse = mcal.get_calendar('NASDAQ')
-        schedule = nyse.schedule(start_date=now_ny.date(), end_date=now_ny.date())
-        if schedule.empty:
+        if not is_market_open_today():
             return "Market Closed", 200
-        run_strategy_core(c, now_ny)
+        run_strategy_core(c, None)
         return "OK", 200
     except Exception:
         send_tg_message(f"{t('error_header')}\n{traceback.format_exc()}")
