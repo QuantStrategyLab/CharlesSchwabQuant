@@ -147,7 +147,7 @@ Important:
 ### Deployment unit and naming
 
 - `QuantPlatformKit` is only a shared dependency; Cloud Run still deploys `CharlesSchwabPlatform` itself.
-- Recommended Cloud Run service name: `charles-schwab-quant-hybrid-growth-income`.
+- Recommended Cloud Run service name: `charles-schwab-quant-hybrid-growth-income-service`.
 - If you later rename or move this repository, reselect the GitHub source in Cloud Build / Cloud Run trigger instead of assuming the previous source binding will follow the rename.
 - For the shared deployment model and trigger migration checklist, see [`QuantPlatformKit/docs/deployment_model.md`](../QuantPlatformKit/docs/deployment_model.md).
 
@@ -293,7 +293,7 @@ Schwab OAuth token payload 当前从 Secret Manager 的 `schwab_token` 里读取
 ### 部署单元和命名建议
 
 - `QuantPlatformKit` 只是共享依赖，不单独部署；Cloud Run 继续只部署 `CharlesSchwabPlatform`。
-- 推荐 Cloud Run 服务名：`charles-schwab-quant-hybrid-growth-income`。
+- 推荐 Cloud Run 服务名：`charles-schwab-quant-hybrid-growth-income-service`。
 - 如果后面改 GitHub 仓库名或再次迁组织，Cloud Build / Cloud Run 里的 GitHub 来源需要重新选择，不要假设旧绑定会自动跟过去。
 - 统一部署模型和触发器迁移清单见 [`QuantPlatformKit/docs/deployment_model.md`](../QuantPlatformKit/docs/deployment_model.md)。
 
