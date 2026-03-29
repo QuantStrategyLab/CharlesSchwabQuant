@@ -135,7 +135,7 @@ def run_strategy_core(
     target_values = plan["target_values"]
     threshold = plan["threshold"]
     sell_executed = False
-    for symbol in ("TQQQ", "SPYI", "QQQI", "BOXX"):
+    for symbol in plan["sell_order_symbols"]:
         current = market_values[symbol]
         target = target_values[symbol]
         if current > (target + threshold):
@@ -147,7 +147,7 @@ def run_strategy_core(
         time.sleep(sell_settle_delay_sec)
 
     estimated_buying_power = max(0, plan["real_buying_power"] - plan["reserved"])
-    for symbol in ("SPYI", "QQQI", "TQQQ"):
+    for symbol in plan["buy_order_symbols"]:
         target_val = target_values[symbol]
         if market_values[symbol] < (target_val - threshold):
             amount_to_spend = min(target_val - market_values[symbol], estimated_buying_power)
@@ -159,10 +159,11 @@ def run_strategy_core(
                     execute_fire_forget(symbol, "BUY_LIMIT", quantity, limit_price)
                     estimated_buying_power -= quantity * limit_price
 
-    if estimated_buying_power > quotes["BOXX"]["lastPrice"] * 2:
-        quantity = int(estimated_buying_power // quotes["BOXX"]["lastPrice"])
+    cash_sweep_symbol = plan["cash_sweep_symbol"]
+    if estimated_buying_power > quotes[cash_sweep_symbol]["lastPrice"] * 2:
+        quantity = int(estimated_buying_power // quotes[cash_sweep_symbol]["lastPrice"])
         if quantity > 0:
-            execute_fire_forget("BOXX", "BUY_MARKET", quantity)
+            execute_fire_forget(cash_sweep_symbol, "BUY_MARKET", quantity)
 
     if trade_logs:
         trade_message = (
@@ -174,12 +175,18 @@ def run_strategy_core(
         )
         send_tg_message(trade_message)
     else:
+        holdings_lines = [
+            "  ".join(
+                f"{symbol}: ${market_values[symbol]:,.2f}"
+                for symbol in row
+            )
+            for row in plan["portfolio_rows"]
+        ]
         no_trade_message = (
             f"{translator('heartbeat_header')}\n"
             f"💰 {translator('equity')}: ${plan['total_equity']:,.2f}\n"
             f"{plan['separator']}\n"
-            f"TQQQ: ${market_values['TQQQ']:,.2f}  BOXX: ${market_values['BOXX']:,.2f}\n"
-            f"QQQI: ${market_values['QQQI']:,.2f}  SPYI: ${market_values['SPYI']:,.2f}\n"
+            + "\n".join(holdings_lines) + "\n"
             f"{plan['separator']}\n"
             f"🎯 {translator('signal_label')}: {plan['sig_display']}\n"
             f"QQQ: {plan['qqq_p']:.2f} | MA200: {plan['ma200']:.2f} | Exit: {plan['exit_line']:.2f}\n"
@@ -188,4 +195,3 @@ def run_strategy_core(
         )
         print(no_trade_message, flush=True)
         send_tg_message(no_trade_message)
-
