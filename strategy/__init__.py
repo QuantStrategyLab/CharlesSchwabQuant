@@ -1,2 +1,2 @@
-"""Strategy-layer helpers for CharlesSchwabQuant."""
+"""Strategy-layer helpers for CharlesSchwabPlatform."""
 

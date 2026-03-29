@@ -1,1 +1,1 @@
-"""Notification helpers for CharlesSchwabQuant."""
+"""Notification helpers for CharlesSchwabPlatform."""

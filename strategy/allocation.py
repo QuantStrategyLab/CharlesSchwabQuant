@@ -1,4 +1,4 @@
-"""Allocation and plan helpers for CharlesSchwabQuant."""
+"""Allocation and plan helpers for CharlesSchwabPlatform."""
 
 from __future__ import annotations
 

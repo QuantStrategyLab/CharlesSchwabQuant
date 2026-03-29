@@ -1,4 +1,4 @@
-"""Application orchestration for CharlesSchwabQuant."""
+"""Application orchestration for CharlesSchwabPlatform."""
 
 from __future__ import annotations
 

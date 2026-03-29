@@ -1,2 +1,2 @@
-"""Entrypoint helpers for CharlesSchwabQuant."""
+"""Entrypoint helpers for CharlesSchwabPlatform."""
 

@@ -1,2 +1,2 @@
-"""Application-layer services for CharlesSchwabQuant."""
+"""Application-layer services for CharlesSchwabPlatform."""
 

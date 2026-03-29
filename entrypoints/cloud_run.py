@@ -1,4 +1,4 @@
-"""Cloud Run request helpers for CharlesSchwabQuant."""
+"""Cloud Run request helpers for CharlesSchwabPlatform."""
 
 from __future__ import annotations
 

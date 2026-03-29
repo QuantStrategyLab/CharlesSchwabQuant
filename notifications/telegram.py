@@ -1,4 +1,4 @@
-"""Telegram notification and i18n helpers for CharlesSchwabQuant."""
+"""Telegram notification and i18n helpers for CharlesSchwabPlatform."""
 
 from __future__ import annotations
 
