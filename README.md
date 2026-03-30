@@ -17,6 +17,8 @@ Automated trading service for Charles Schwab accounts, deployed on GCP Cloud Run
 This repository uses `QuantPlatformKit` for Schwab client bootstrap, account snapshot access, market data, and order submission. Cloud Run deploys this repository directly.
 The `hybrid_growth_income` strategy implementation is sourced from `UsEquityStrategies`.
 
+Full strategy documentation now lives in [`UsEquityStrategies`](https://github.com/QuantStrategyLab/UsEquityStrategies#hybrid_growth_income). The sections below focus on execution-side defaults and runtime behavior.
+
 ### Logic overview
 
 - **Data**: QQQ (signals), TQQQ, SPYI, QQQI, BOXX; daily. Indicators: 200-day SMA (MA200), 14-day ATR%.
@@ -163,6 +165,8 @@ Deploy as a Cloud Run service and trigger the root URL on a schedule (e.g. once 
 
 这个仓库通过 `QuantPlatformKit` 复用 Schwab client 初始化、账户快照、行情读取和下单逻辑。Cloud Run 直接部署这个仓库。
 `hybrid_growth_income` 策略实现来自 `UsEquityStrategies`。
+
+完整策略说明现在放在 [`UsEquityStrategies`](https://github.com/QuantStrategyLab/UsEquityStrategies#hybrid_growth_income)。下面这些章节主要保留执行侧默认值和运行时行为。
 
 ### 策略概览
 
