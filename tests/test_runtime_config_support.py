@@ -18,7 +18,7 @@ from runtime_config_support import (  # noqa: E402
     DEFAULT_STRATEGY_PROFILE,
     load_platform_runtime_settings,
 )
-from strategy_registry import SCHWAB_PLATFORM, US_EQUITY_DOMAIN, get_supported_profiles_for_platform
+from strategy_registry import SCHWAB_PLATFORM, US_EQUITY_DOMAIN, get_platform_profile_matrix, get_supported_profiles_for_platform
 
 
 class RuntimeConfigSupportTests(unittest.TestCase):
@@ -46,6 +46,19 @@ class RuntimeConfigSupportTests(unittest.TestCase):
             get_supported_profiles_for_platform(SCHWAB_PLATFORM),
             frozenset({DEFAULT_STRATEGY_PROFILE}),
         )
+
+    def test_accepts_human_readable_alias(self):
+        with patch.dict(os.environ, {"STRATEGY_PROFILE": "qqq_tqqq_growth_income"}, clear=True):
+            settings = load_platform_runtime_settings()
+
+        self.assertEqual(settings.strategy_profile, DEFAULT_STRATEGY_PROFILE)
+
+    def test_platform_profile_matrix_marks_default(self):
+        rows = get_platform_profile_matrix()
+        self.assertEqual(rows[0]["canonical_profile"], DEFAULT_STRATEGY_PROFILE)
+        self.assertEqual(rows[0]["display_name"], "QQQ/TQQQ Growth Income")
+        self.assertTrue(rows[0]["is_default"])
+
 
 
 if __name__ == "__main__":
