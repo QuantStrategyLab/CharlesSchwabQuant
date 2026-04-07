@@ -53,6 +53,13 @@ def install_stub_modules():
     cloud_run_module = types.ModuleType("entrypoints.cloud_run")
     cloud_run_module.is_market_open_today = lambda: True
 
+    runtime_config_support_module = types.ModuleType("runtime_config_support")
+    runtime_config_support_module.load_platform_runtime_settings = lambda: types.SimpleNamespace(
+        strategy_profile="hybrid_growth_income",
+        strategy_domain="us_equity",
+        notify_lang="en",
+    )
+
     strategy_runtime_module = types.ModuleType("strategy_runtime")
     strategy_runtime_module.load_strategy_runtime = lambda *_args, **_kwargs: types.SimpleNamespace(
         merged_runtime_config={
@@ -89,6 +96,7 @@ def install_stub_modules():
         "requests": requests_module,
         "application.rebalance_service": rebalance_service_module,
         "entrypoints.cloud_run": cloud_run_module,
+        "runtime_config_support": runtime_config_support_module,
         "strategy_runtime": strategy_runtime_module,
         "google": google_module,
         "google.auth": google_auth_module,
@@ -173,6 +181,29 @@ class RequestHandlingTests(unittest.TestCase):
             ["strategy_cycle_received", "strategy_cycle_started", "strategy_cycle_completed"],
         )
         self.assertTrue(all(run_id == "run-001" for run_id, _event, _fields in observed))
+
+    def test_handle_schwab_persists_machine_readable_report(self):
+        module = load_module()
+        observed = {}
+
+        module.build_run_id = lambda: "run-001"
+        module.get_client_from_secret = lambda *args, **kwargs: object()
+        module.is_market_open_today = lambda: True
+        module.run_strategy_core = lambda *_args, **_kwargs: None
+        module.persist_execution_report = lambda report: observed.setdefault("report", report) or "/tmp/report.json"
+
+        with module.app.test_request_context("/", method="POST"):
+            body, status = module.handle_schwab()
+
+        self.assertEqual(status, 200)
+        self.assertEqual(body, "OK")
+        self.assertEqual(observed["report"]["status"], "ok")
+        self.assertEqual(observed["report"]["strategy_profile"], "hybrid_growth_income")
+        self.assertEqual(observed["report"]["run_source"], "cloud_run")
+        self.assertEqual(
+            observed["report"]["summary"]["managed_symbols"],
+            ["TQQQ", "BOXX", "SPYI", "QQQI"],
+        )
 
 
 if __name__ == "__main__":

@@ -1,5 +1,6 @@
 import os
 import traceback
+from datetime import datetime, timezone
 from flask import Flask
 import google.auth
 
@@ -13,6 +14,12 @@ from quant_platform_kit.schwab import (
     fetch_quotes,
     get_client_from_secret,
     submit_equity_order,
+)
+from quant_platform_kit.common.runtime_reports import (
+    append_runtime_report_error,
+    build_runtime_report_base,
+    finalize_runtime_report,
+    persist_runtime_report,
 )
 from runtime_config_support import load_platform_runtime_settings
 from runtime_logging import RuntimeLogContext, build_run_id, emit_runtime_log
@@ -99,6 +106,33 @@ def log_runtime_event(log_context, event, **fields):
     )
 
 
+def build_execution_report(log_context):
+    return build_runtime_report_base(
+        platform=log_context.platform,
+        deploy_target=log_context.deploy_target,
+        service_name=log_context.service_name,
+        strategy_profile=STRATEGY_PROFILE,
+        strategy_domain=RUNTIME_SETTINGS.strategy_domain,
+        run_id=log_context.run_id,
+        run_source="cloud_run",
+        started_at=datetime.now(timezone.utc),
+        summary={
+            "managed_symbols": list(MANAGED_SYMBOLS),
+            "benchmark_symbol": BENCHMARK_SYMBOL,
+        },
+    )
+
+
+def persist_execution_report(report):
+    persisted = persist_runtime_report(
+        report,
+        base_dir=os.getenv("EXECUTION_REPORT_OUTPUT_DIR"),
+        gcs_prefix_uri=os.getenv("EXECUTION_REPORT_GCS_URI"),
+        gcp_project_id=PROJECT_ID,
+    )
+    return persisted.gcs_uri or persisted.local_path
+
+
 # ---------------------------------------------------------------------------
 # Strategy execution
 # ---------------------------------------------------------------------------
@@ -147,6 +181,7 @@ def run_strategy_core(c, now_ny):
 @app.route("/", methods=["POST", "GET"])
 def handle_schwab():
     log_context = RUNTIME_LOG_CONTEXT.with_run(build_run_id())
+    report = build_execution_report(log_context)
     try:
         log_runtime_event(
             log_context,
@@ -160,6 +195,11 @@ def handle_schwab():
                 "market_closed",
                 message="Market closed; skip strategy execution",
             )
+            finalize_runtime_report(
+                report,
+                status="skipped",
+                diagnostics={"skip_reason": "market_closed"},
+            )
             return "Market Closed", 200
         log_runtime_event(
             log_context,
@@ -167,6 +207,7 @@ def handle_schwab():
             message="Starting strategy execution",
         )
         run_strategy_core(c, None)
+        finalize_runtime_report(report, status="ok")
         log_runtime_event(
             log_context,
             "strategy_cycle_completed",
@@ -174,6 +215,13 @@ def handle_schwab():
         )
         return "OK", 200
     except Exception as exc:
+        append_runtime_report_error(
+            report,
+            stage="strategy_cycle",
+            message=str(exc),
+            error_type=type(exc).__name__,
+        )
+        finalize_runtime_report(report, status="error")
         log_runtime_event(
             log_context,
             "strategy_cycle_failed",
@@ -184,6 +232,12 @@ def handle_schwab():
         )
         send_tg_message(f"{t('error_header')}\n{traceback.format_exc()}")
         return "Error", 500
+    finally:
+        try:
+            report_path = persist_execution_report(report)
+            print(f"execution_report {report_path}", flush=True)
+        except Exception as persist_exc:
+            print(f"failed to persist execution report: {persist_exc}", flush=True)
 
 
 if __name__ == "__main__":

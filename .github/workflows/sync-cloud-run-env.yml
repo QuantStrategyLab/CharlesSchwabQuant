@@ -27,6 +27,7 @@ jobs:
       STRATEGY_PROFILE: ${{ vars.STRATEGY_PROFILE || 'hybrid_growth_income' }}
       INCOME_THRESHOLD_USD: ${{ vars.INCOME_THRESHOLD_USD }}
       QQQI_INCOME_RATIO: ${{ vars.QQQI_INCOME_RATIO }}
+      EXECUTION_REPORT_GCS_URI: ${{ vars.EXECUTION_REPORT_GCS_URI }}
       GLOBAL_TELEGRAM_CHAT_ID: ${{ vars.GLOBAL_TELEGRAM_CHAT_ID }}
       NOTIFY_LANG: ${{ vars.NOTIFY_LANG }}
       TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
@@ -140,6 +141,12 @@ jobs:
 
           if [ -n "${QQQI_INCOME_RATIO:-}" ]; then
             env_pairs+=("QQQI_INCOME_RATIO=${QQQI_INCOME_RATIO}")
+          fi
+
+          if [ -n "${EXECUTION_REPORT_GCS_URI:-}" ]; then
+            env_pairs+=("EXECUTION_REPORT_GCS_URI=${EXECUTION_REPORT_GCS_URI}")
+          else
+            remove_env_vars+=("EXECUTION_REPORT_GCS_URI")
           fi
 
           if [ -n "${GOOGLE_CLOUD_PROJECT:-}" ]; then
