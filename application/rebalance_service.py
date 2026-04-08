@@ -7,6 +7,18 @@ import time
 from quant_platform_kit.common.models import OrderIntent
 
 
+def _plan_portfolio(plan):
+    return dict(plan.get("portfolio") or {})
+
+
+def _plan_execution(plan):
+    return dict(plan.get("execution") or {})
+
+
+def _plan_allocation(plan):
+    return dict(plan.get("allocation") or {})
+
+
 def run_strategy_core(
     client,
     now_ny,
@@ -28,7 +40,12 @@ def run_strategy_core(
         qqq_history=fetch_reference_history(client),
         snapshot=snapshot,
     )
-    strategy_symbols = plan["strategy_symbols"]
+    portfolio = _plan_portfolio(plan)
+    execution = _plan_execution(plan)
+    allocation = _plan_allocation(plan)
+    if allocation.get("target_mode") != "value":
+        raise ValueError("CharlesSchwabPlatform requires allocation.target_mode=value")
+    strategy_symbols = tuple(allocation["strategy_symbols"])
 
     quote_snapshots = fetch_managed_quotes(client)
     quotes = {
@@ -93,11 +110,16 @@ def run_strategy_core(
             send_tg_message(message)
             return False
 
-    market_values = plan["market_values"]
-    target_values = plan["target_values"]
-    threshold = plan["threshold"]
+    market_values = dict(portfolio["market_values"])
+    target_values = dict(allocation["targets"])
+    threshold = float(execution["trade_threshold_value"])
+    sell_order_symbols = tuple(
+        allocation.get("risk_symbols", ())
+        + allocation.get("income_symbols", ())
+        + allocation.get("safe_haven_symbols", ())
+    )
     sell_executed = False
-    for symbol in plan["sell_order_symbols"]:
+    for symbol in sell_order_symbols:
         current = market_values[symbol]
         target = target_values[symbol]
         if current > (target + threshold):
@@ -108,8 +130,13 @@ def run_strategy_core(
     if sell_executed:
         time.sleep(sell_settle_delay_sec)
 
-    estimated_buying_power = max(0, plan["real_buying_power"] - plan["reserved"])
-    for symbol in plan["buy_order_symbols"]:
+    liquid_cash = float(portfolio["liquid_cash"])
+    reserved_cash = float(execution["reserved_cash"])
+    estimated_buying_power = max(0, liquid_cash - reserved_cash)
+    buy_order_symbols = tuple(
+        allocation.get("income_symbols", ()) + allocation.get("risk_symbols", ())
+    )
+    for symbol in buy_order_symbols:
         target_val = target_values[symbol]
         if market_values[symbol] < (target_val - threshold):
             amount_to_spend = min(target_val - market_values[symbol], estimated_buying_power)
@@ -121,19 +148,29 @@ def run_strategy_core(
                     execute_fire_forget(symbol, "BUY_LIMIT", quantity, limit_price)
                     estimated_buying_power -= quantity * limit_price
 
-    cash_sweep_symbol = plan["cash_sweep_symbol"]
+    cash_sweep_symbol = str(portfolio["cash_sweep_symbol"])
     if estimated_buying_power > quotes[cash_sweep_symbol]["lastPrice"] * 2:
         quantity = int(estimated_buying_power // quotes[cash_sweep_symbol]["lastPrice"])
         if quantity > 0:
             execute_fire_forget(cash_sweep_symbol, "BUY_MARKET", quantity)
 
+    signal_display = str(execution["signal_display"])
+    dashboard_text = str(execution["dashboard_text"])
+    separator = str(execution["separator"])
+    total_equity = float(portfolio["total_equity"])
+    portfolio_rows = tuple(portfolio["portfolio_rows"])
+    benchmark_symbol = str(execution["benchmark_symbol"])
+    benchmark_price = float(execution["benchmark_price"])
+    long_trend_value = float(execution["long_trend_value"])
+    exit_line = float(execution["exit_line"])
+
     if trade_logs:
         trade_message = (
             f"{translator('trade_header')}\n"
             f"{translator('strategy_profile', profile=plan.get('strategy_profile', '<unknown>'))}\n"
-            f"📊 {translator('signal_label')}: {plan['sig_display']}\n\n"
-            f"{plan['dashboard']}\n"
-            f"{plan['separator']}\n"
+            f"📊 {translator('signal_label')}: {signal_display}\n\n"
+            f"{dashboard_text}\n"
+            f"{separator}\n"
             + "\n".join(trade_logs)
         )
         send_tg_message(trade_message)
@@ -143,18 +180,18 @@ def run_strategy_core(
                 f"{symbol}: ${market_values[symbol]:,.2f}"
                 for symbol in row
             )
-            for row in plan["portfolio_rows"]
+            for row in portfolio_rows
         ]
         no_trade_message = (
             f"{translator('heartbeat_header')}\n"
             f"{translator('strategy_profile', profile=plan.get('strategy_profile', '<unknown>'))}\n"
-            f"💰 {translator('equity')}: ${plan['total_equity']:,.2f}\n"
-            f"{plan['separator']}\n"
+            f"💰 {translator('equity')}: ${total_equity:,.2f}\n"
+            f"{separator}\n"
             + "\n".join(holdings_lines) + "\n"
-            f"{plan['separator']}\n"
-            f"🎯 {translator('signal_label')}: {plan['sig_display']}\n"
-            f"QQQ: {plan['qqq_p']:.2f} | MA200: {plan['ma200']:.2f} | Exit: {plan['exit_line']:.2f}\n"
-            f"{plan['separator']}\n"
+            f"{separator}\n"
+            f"🎯 {translator('signal_label')}: {signal_display}\n"
+            f"{benchmark_symbol}: {benchmark_price:.2f} | MA200: {long_trend_value:.2f} | Exit: {exit_line:.2f}\n"
+            f"{separator}\n"
             f"{translator('no_trades')}"
         )
         print(no_trade_message, flush=True)
