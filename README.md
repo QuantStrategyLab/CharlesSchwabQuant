@@ -37,6 +37,7 @@ Platform execution no longer depends on `strategy/allocation.py`, hard-coded str
 | Canonical profile | Display name | Eligible | Enabled | Default | Rollback | Domain | Runtime note |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `hybrid_growth_income` | TQQQ Growth Income | Yes | Yes | Yes | Yes | `us_equity` | current Schwab default |
+| `semiconductor_rotation_income` | SOXL/SOXX Semiconductor Trend Income | Yes | Yes | No | No | `us_equity` | enabled value-mode alternative |
 
 Check the current matrix locally:
 
@@ -166,7 +167,7 @@ On every push to `main`, the workflow updates the existing Cloud Run service wit
 Important:
 
 - The workflow only becomes strict when `ENABLE_GITHUB_ENV_SYNC=true`. If this variable is unset, the sync job is skipped and the old Google Cloud Trigger + manual Cloud Run env setup keeps working.
-- `STRATEGY_PROFILE` is driven by the platform capability matrix plus a rollout allowlist. Today both `eligible` and `enabled` still resolve to `hybrid_growth_income`.
+- `STRATEGY_PROFILE` is driven by the platform capability matrix plus a rollout allowlist. Today `eligible` and `enabled` both include `hybrid_growth_income` and `semiconductor_rotation_income`.
 - The current strategy domain is `us_equity`, and the repo now keeps a thin strategy registry so future expansion can grow by domain + profile instead of mixing strategy and platform in one layer.
 - `INCOME_THRESHOLD_USD` and `QQQI_INCOME_RATIO` are optional in env sync. If you leave them unset, the app keeps using the code defaults (`100000` and `0.5`).
 - GitHub now authenticates to Google Cloud with OIDC + Workload Identity Federation. `GCP_SA_KEY` is no longer required for this workflow.
@@ -175,7 +176,7 @@ Important:
 ### Deployment unit and naming
 
 - `QuantPlatformKit` is only a shared dependency; Cloud Run still deploys `CharlesSchwabPlatform` itself.
-- Recommended Cloud Run service name: `charles-schwab-quant-hybrid-growth-income-service`.
+- Recommended Cloud Run service name: `charles-schwab-quant-service`.
 - If you later rename or move this repository, reselect the GitHub source in Cloud Build / Cloud Run trigger instead of assuming the previous source binding will follow the rename.
 - For the shared deployment model and trigger migration checklist, see [`QuantPlatformKit/docs/deployment_model.md`](../QuantPlatformKit/docs/deployment_model.md).
 
@@ -326,7 +327,7 @@ Schwab OAuth token payload 当前从 Secret Manager 的 `schwab_token` 里读取
 注意：
 
 - 只有在 `ENABLE_GITHUB_ENV_SYNC=true` 时，这个 workflow 才会严格校验并执行同步。没打开时会直接跳过，不影响原来 Google Cloud Trigger + 手工 Cloud Run env 的老流程。
-- `STRATEGY_PROFILE` 现在由平台能力矩阵和 rollout allowlist 一起决定。当前 `eligible` 和 `enabled` 仍然都只落在 `hybrid_growth_income`。
+- `STRATEGY_PROFILE` 现在由平台能力矩阵和 rollout allowlist 一起决定。当前 `eligible` 和 `enabled` 都包含 `hybrid_growth_income` 和 `semiconductor_rotation_income`。
 - 当前策略域是 `us_equity`，本地策略注册表只用于域和 profile 校验。
 - `INCOME_THRESHOLD_USD` 和 `QQQI_INCOME_RATIO` 在 env-sync 里是可选项。不填时，程序会继续使用代码里的默认值：`100000` 和 `0.5`。
 - GitHub 现在通过 OIDC + Workload Identity Federation 登录 Google Cloud，这个 workflow 不再需要 `GCP_SA_KEY`。
@@ -335,7 +336,7 @@ Schwab OAuth token payload 当前从 Secret Manager 的 `schwab_token` 里读取
 ### 部署单元和命名建议
 
 - `QuantPlatformKit` 只是共享依赖，不单独部署；Cloud Run 继续只部署 `CharlesSchwabPlatform`。
-- 推荐 Cloud Run 服务名：`charles-schwab-quant-hybrid-growth-income-service`。
+- 推荐 Cloud Run 服务名：`charles-schwab-quant-service`。
 - 如果后面改 GitHub 仓库名或再次迁组织，Cloud Build / Cloud Run 里的 GitHub 来源需要重新选择，不要假设旧绑定会自动跟过去。
 - 统一部署模型和触发器迁移清单见 [`QuantPlatformKit/docs/deployment_model.md`](../QuantPlatformKit/docs/deployment_model.md)。
 
