@@ -2,22 +2,26 @@ import unittest
 from unittest.mock import patch
 
 import strategy_runtime as strategy_runtime_module
-from quant_platform_kit.strategy_contracts import StrategyDecision
+from quant_platform_kit.strategy_contracts import (
+    StrategyDecision,
+    StrategyManifest,
+    StrategyRuntimeAdapter,
+)
 
 
 class _FakeEntrypoint:
     def __init__(self):
-        self.manifest = type(
-            "Manifest",
-            (),
-            {
-                "profile": "hybrid_growth_income",
-                "default_config": {
-                    "benchmark_symbol": "QQQ",
-                    "managed_symbols": ("TQQQ", "BOXX", "SPYI", "QQQI"),
-                },
+        self.manifest = StrategyManifest(
+            profile="hybrid_growth_income",
+            domain="us_equity",
+            display_name="Hybrid Growth Income",
+            description="test entrypoint",
+            required_inputs=frozenset({"qqq_history"}),
+            default_config={
+                "benchmark_symbol": "QQQ",
+                "managed_symbols": ("TQQQ", "BOXX", "SPYI", "QQQI"),
             },
-        )()
+        )
 
     def evaluate(self, ctx):
         self.ctx = ctx
@@ -29,6 +33,7 @@ class StrategyRuntimeTests(unittest.TestCase):
         entrypoint = _FakeEntrypoint()
         runtime = strategy_runtime_module.LoadedStrategyRuntime(
             entrypoint=entrypoint,
+            runtime_adapter=StrategyRuntimeAdapter(portfolio_input_name="snapshot"),
             merged_runtime_config={
                 "benchmark_symbol": "QQQ",
                 "managed_symbols": ("TQQQ", "BOXX", "SPYI", "QQQI"),
@@ -51,10 +56,15 @@ class StrategyRuntimeTests(unittest.TestCase):
         entrypoint = _FakeEntrypoint()
 
         with patch.object(strategy_runtime_module, "load_strategy_entrypoint_for_profile", return_value=entrypoint) as mock_loader:
-            runtime = strategy_runtime_module.load_strategy_runtime(
-                "hybrid_growth_income",
-                runtime_overrides={"benchmark_symbol": "VGT"},
-            )
+            with patch.object(
+                strategy_runtime_module,
+                "load_strategy_runtime_adapter_for_profile",
+                return_value=StrategyRuntimeAdapter(portfolio_input_name="snapshot"),
+            ):
+                runtime = strategy_runtime_module.load_strategy_runtime(
+                    "hybrid_growth_income",
+                    runtime_overrides={"benchmark_symbol": "VGT"},
+                )
 
         mock_loader.assert_called_once_with("hybrid_growth_income")
         self.assertIs(runtime.entrypoint, entrypoint)

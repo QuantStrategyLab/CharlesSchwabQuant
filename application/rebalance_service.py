@@ -19,6 +19,13 @@ def _plan_allocation(plan):
     return dict(plan.get("allocation") or {})
 
 
+def _has_benchmark_context(execution):
+    return any(
+        float(execution.get(key) or 0.0) > 0.0
+        for key in ("benchmark_price", "long_trend_value", "exit_line")
+    )
+
+
 def run_strategy_core(
     client,
     now_ny,
@@ -155,6 +162,7 @@ def run_strategy_core(
             execute_fire_forget(cash_sweep_symbol, "BUY_MARKET", quantity)
 
     signal_display = str(execution["signal_display"])
+    status_display = str(execution.get("status_display") or "")
     dashboard_text = str(execution["dashboard_text"])
     separator = str(execution["separator"])
     total_equity = float(portfolio["total_equity"])
@@ -163,14 +171,19 @@ def run_strategy_core(
     benchmark_price = float(execution["benchmark_price"])
     long_trend_value = float(execution["long_trend_value"])
     exit_line = float(execution["exit_line"])
+    status_line = f"📊 {status_display}\n" if status_display else ""
+    dashboard_block = f"{dashboard_text}\n{separator}\n" if dashboard_text else ""
+    benchmark_line = ""
+    if _has_benchmark_context(execution):
+        benchmark_line = f"{benchmark_symbol}: {benchmark_price:.2f} | MA200: {long_trend_value:.2f} | Exit: {exit_line:.2f}\n"
 
     if trade_logs:
         trade_message = (
             f"{translator('trade_header')}\n"
             f"{translator('strategy_profile', profile=plan.get('strategy_profile', '<unknown>'))}\n"
+            f"{status_line}"
             f"📊 {translator('signal_label')}: {signal_display}\n\n"
-            f"{dashboard_text}\n"
-            f"{separator}\n"
+            f"{dashboard_block}"
             + "\n".join(trade_logs)
         )
         send_tg_message(trade_message)
@@ -189,8 +202,9 @@ def run_strategy_core(
             f"{separator}\n"
             + "\n".join(holdings_lines) + "\n"
             f"{separator}\n"
+            f"{status_line}"
             f"🎯 {translator('signal_label')}: {signal_display}\n"
-            f"{benchmark_symbol}: {benchmark_price:.2f} | MA200: {long_trend_value:.2f} | Exit: {exit_line:.2f}\n"
+            f"{benchmark_line}"
             f"{separator}\n"
             f"{translator('no_trades')}"
         )

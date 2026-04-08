@@ -1,12 +1,16 @@
 from __future__ import annotations
 
-from us_equity_strategies import get_strategy_catalog
+from us_equity_strategies import get_platform_runtime_adapter, get_strategy_catalog
 
 from quant_platform_kit.common.strategies import (
+    PlatformCapabilityMatrix,
     PlatformStrategyPolicy,
     StrategyDefinition,
     US_EQUITY_DOMAIN,
     build_platform_profile_matrix,
+    build_platform_profile_status_matrix,
+    derive_enabled_profiles_for_platform,
+    derive_eligible_profiles_for_platform,
     get_enabled_profiles_for_platform,
     resolve_platform_strategy_definition,
 )
@@ -16,12 +20,39 @@ SCHWAB_PLATFORM = "schwab"
 DEFAULT_STRATEGY_PROFILE = "hybrid_growth_income"
 ROLLBACK_STRATEGY_PROFILE = DEFAULT_STRATEGY_PROFILE
 
-SCHWAB_ENABLED_PROFILES = frozenset({"hybrid_growth_income"})
+SCHWAB_ROLLOUT_ALLOWLIST = frozenset({
+    "hybrid_growth_income",
+    "semiconductor_rotation_income",
+})
 
 PLATFORM_SUPPORTED_DOMAINS: dict[str, frozenset[str]] = {
     SCHWAB_PLATFORM: frozenset({US_EQUITY_DOMAIN}),
 }
 STRATEGY_CATALOG = get_strategy_catalog()
+PLATFORM_CAPABILITY_MATRIX = PlatformCapabilityMatrix(
+    platform_id=SCHWAB_PLATFORM,
+    supported_domains=PLATFORM_SUPPORTED_DOMAINS[SCHWAB_PLATFORM],
+    supported_target_modes=frozenset({"value"}),
+    supported_inputs=frozenset({"qqq_history", "snapshot", "indicators", "account_state"}),
+    supported_capabilities=frozenset(),
+)
+ELIGIBLE_STRATEGY_PROFILES = derive_eligible_profiles_for_platform(
+    STRATEGY_CATALOG,
+    capability_matrix=PLATFORM_CAPABILITY_MATRIX,
+    runtime_adapter_loader=lambda profile: get_platform_runtime_adapter(
+        profile,
+        platform_id=SCHWAB_PLATFORM,
+    ),
+)
+SCHWAB_ENABLED_PROFILES = derive_enabled_profiles_for_platform(
+    STRATEGY_CATALOG,
+    capability_matrix=PLATFORM_CAPABILITY_MATRIX,
+    runtime_adapter_loader=lambda profile: get_platform_runtime_adapter(
+        profile,
+        platform_id=SCHWAB_PLATFORM,
+    ),
+    rollout_allowlist=SCHWAB_ROLLOUT_ALLOWLIST,
+)
 PLATFORM_POLICY = PlatformStrategyPolicy(
     platform_id=SCHWAB_PLATFORM,
     supported_domains=PLATFORM_SUPPORTED_DOMAINS[SCHWAB_PLATFORM],
@@ -33,12 +64,26 @@ PLATFORM_POLICY = PlatformStrategyPolicy(
 SUPPORTED_STRATEGY_PROFILES = SCHWAB_ENABLED_PROFILES
 
 
+def get_eligible_profiles_for_platform(platform_id: str) -> frozenset[str]:
+    if platform_id != SCHWAB_PLATFORM:
+        return frozenset()
+    return ELIGIBLE_STRATEGY_PROFILES
+
+
 def get_supported_profiles_for_platform(platform_id: str) -> frozenset[str]:
     return get_enabled_profiles_for_platform(platform_id, policy=PLATFORM_POLICY)
 
 
 def get_platform_profile_matrix() -> list[dict[str, object]]:
     return build_platform_profile_matrix(STRATEGY_CATALOG, policy=PLATFORM_POLICY)
+
+
+def get_platform_profile_status_matrix() -> list[dict[str, object]]:
+    return build_platform_profile_status_matrix(
+        STRATEGY_CATALOG,
+        policy=PLATFORM_POLICY,
+        eligible_profiles=ELIGIBLE_STRATEGY_PROFILES,
+    )
 
 
 def resolve_strategy_definition(

@@ -68,6 +68,7 @@ def install_stub_modules():
         },
         managed_symbols=("TQQQ", "BOXX", "SPYI", "QQQI"),
         benchmark_symbol="QQQ",
+        runtime_adapter=types.SimpleNamespace(available_inputs=frozenset({"qqq_history", "snapshot"})),
         evaluate=lambda **_kwargs: None,
     )
 
@@ -204,6 +205,45 @@ class RequestHandlingTests(unittest.TestCase):
             observed["report"]["summary"]["managed_symbols"],
             ["TQQQ", "BOXX", "SPYI", "QQQI"],
         )
+
+    def test_build_account_state_from_snapshot_uses_strategy_symbols(self):
+        module = load_module()
+        snapshot = types.SimpleNamespace(
+            total_equity=50000.0,
+            buying_power=12000.0,
+            positions=(
+                types.SimpleNamespace(symbol="TQQQ", quantity=5, market_value=1000.0),
+                types.SimpleNamespace(symbol="BOXX", quantity=10, market_value=5000.0),
+                types.SimpleNamespace(symbol="QQQ", quantity=99, market_value=9999.0),
+            ),
+            metadata={"cash_available_for_trading": 8000.0},
+        )
+
+        account_state = module.build_account_state_from_snapshot(snapshot)
+
+        self.assertEqual(account_state["available_cash"], 8000.0)
+        self.assertEqual(account_state["market_values"]["TQQQ"], 1000.0)
+        self.assertEqual(account_state["market_values"]["BOXX"], 5000.0)
+        self.assertNotIn("QQQ", account_state["market_values"])
+        self.assertEqual(account_state["total_strategy_equity"], 50000.0)
+
+    def test_build_semiconductor_indicators_uses_soxl_and_soxx_histories(self):
+        module = load_module()
+
+        def fake_history(_client, symbol):
+            if symbol == "SOXL":
+                return [{"close": 100.0 + idx} for idx in range(160)]
+            if symbol == "SOXX":
+                return [{"close": 210.0 + idx} for idx in range(20)]
+            raise AssertionError(f"unexpected symbol {symbol}")
+
+        module.fetch_default_daily_price_history_candles = fake_history
+
+        indicators = module.build_semiconductor_indicators(object(), trend_window=150)
+
+        self.assertEqual(indicators["soxl"]["price"], 259.0)
+        self.assertAlmostEqual(indicators["soxl"]["ma_trend"], sum(100.0 + idx for idx in range(10, 160)) / 150)
+        self.assertEqual(indicators["soxx"]["price"], 229.0)
 
 
 if __name__ == "__main__":

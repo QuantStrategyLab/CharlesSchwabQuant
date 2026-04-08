@@ -18,7 +18,13 @@ from runtime_config_support import (  # noqa: E402
     DEFAULT_STRATEGY_PROFILE,
     load_platform_runtime_settings,
 )
-from strategy_registry import SCHWAB_PLATFORM, US_EQUITY_DOMAIN, get_platform_profile_matrix, get_supported_profiles_for_platform
+from strategy_registry import (
+    SCHWAB_PLATFORM,
+    US_EQUITY_DOMAIN,
+    get_eligible_profiles_for_platform,
+    get_platform_profile_matrix,
+    get_supported_profiles_for_platform,
+)
 
 
 class RuntimeConfigSupportTests(unittest.TestCase):
@@ -44,7 +50,13 @@ class RuntimeConfigSupportTests(unittest.TestCase):
     def test_platform_supported_profiles_are_filtered_by_registry(self):
         self.assertEqual(
             get_supported_profiles_for_platform(SCHWAB_PLATFORM),
-            frozenset({DEFAULT_STRATEGY_PROFILE}),
+            frozenset({DEFAULT_STRATEGY_PROFILE, "semiconductor_rotation_income"}),
+        )
+
+    def test_platform_eligible_profiles_are_exposed_by_capability_matrix(self):
+        self.assertEqual(
+            get_eligible_profiles_for_platform(SCHWAB_PLATFORM),
+            frozenset({DEFAULT_STRATEGY_PROFILE, "semiconductor_rotation_income"}),
         )
 
     def test_accepts_human_readable_alias(self):
@@ -55,9 +67,10 @@ class RuntimeConfigSupportTests(unittest.TestCase):
 
     def test_platform_profile_matrix_marks_default(self):
         rows = get_platform_profile_matrix()
-        self.assertEqual(rows[0]["canonical_profile"], DEFAULT_STRATEGY_PROFILE)
-        self.assertEqual(rows[0]["display_name"], "QQQ/TQQQ Growth Income")
-        self.assertTrue(rows[0]["is_default"])
+        by_profile = {row["canonical_profile"]: row for row in rows}
+        self.assertEqual(by_profile[DEFAULT_STRATEGY_PROFILE]["display_name"], "QQQ/TQQQ Growth Income")
+        self.assertTrue(by_profile[DEFAULT_STRATEGY_PROFILE]["is_default"])
+        self.assertIn("semiconductor_rotation_income", by_profile)
 
 
 

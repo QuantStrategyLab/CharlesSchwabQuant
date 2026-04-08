@@ -63,16 +63,25 @@ STRATEGY_PROFILE = RUNTIME_SETTINGS.strategy_profile
 NOTIFY_LANG = RUNTIME_SETTINGS.notify_lang
 t = build_translator(NOTIFY_LANG)
 signal_text = build_signal_text(t)
+
+
+def build_strategy_runtime_overrides(profile: str) -> dict[str, float]:
+    if profile == "hybrid_growth_income":
+        return {
+            "income_threshold_usd": INCOME_THRESHOLD_USD,
+            "qqqi_income_ratio": QQQI_INCOME_RATIO,
+        }
+    return {}
+
+
 STRATEGY_RUNTIME = load_strategy_runtime(
     STRATEGY_PROFILE,
-    runtime_overrides={
-        "income_threshold_usd": INCOME_THRESHOLD_USD,
-        "qqqi_income_ratio": QQQI_INCOME_RATIO,
-    },
+    runtime_overrides=build_strategy_runtime_overrides(STRATEGY_PROFILE),
 )
 STRATEGY_RUNTIME_CONFIG = dict(STRATEGY_RUNTIME.merged_runtime_config)
 MANAGED_SYMBOLS = STRATEGY_RUNTIME.managed_symbols
 BENCHMARK_SYMBOL = STRATEGY_RUNTIME.benchmark_symbol
+AVAILABLE_INPUTS = frozenset(STRATEGY_RUNTIME.runtime_adapter.available_inputs)
 RUNTIME_LOG_CONTEXT = RuntimeLogContext(
     platform="charles_schwab",
     deploy_target="cloud_run",
@@ -137,7 +146,14 @@ def persist_execution_report(report):
 # Strategy execution
 # ---------------------------------------------------------------------------
 def fetch_reference_history(client):
-    return fetch_default_daily_price_history_candles(client, BENCHMARK_SYMBOL)
+    if "qqq_history" in AVAILABLE_INPUTS:
+        return fetch_default_daily_price_history_candles(client, BENCHMARK_SYMBOL)
+    if "indicators" in AVAILABLE_INPUTS:
+        return build_semiconductor_indicators(
+            client,
+            trend_window=int(STRATEGY_RUNTIME_CONFIG.get("trend_ma_window", 150)),
+        )
+    raise ValueError(f"Unsupported Schwab runtime inputs for {STRATEGY_PROFILE}: {sorted(AVAILABLE_INPUTS)}")
 
 
 def fetch_managed_snapshot(client):
@@ -148,13 +164,66 @@ def fetch_managed_quotes(client):
     return fetch_quotes(client, list(MANAGED_SYMBOLS))
 
 
-def resolve_rebalance_plan(*, qqq_history, snapshot):
-    evaluation = STRATEGY_RUNTIME.evaluate(
-        qqq_history=qqq_history,
-        snapshot=snapshot,
-        signal_text_fn=signal_text,
-        translator=t,
+def build_semiconductor_indicators(client, *, trend_window: int) -> dict[str, dict[str, float]]:
+    soxl_history = fetch_default_daily_price_history_candles(client, "SOXL")
+    soxx_history = fetch_default_daily_price_history_candles(client, "SOXX")
+    if len(soxl_history) < trend_window:
+        raise RuntimeError(
+            f"SOXL history has {len(soxl_history)} candles; need at least {trend_window}"
+        )
+    if not soxx_history:
+        raise RuntimeError("SOXX history response is empty")
+
+    soxl_closes = [float(candle["close"]) for candle in soxl_history[-trend_window:]]
+    soxx_close = float(soxx_history[-1]["close"])
+    return {
+        "soxl": {
+            "price": soxl_closes[-1],
+            "ma_trend": sum(soxl_closes) / trend_window,
+        },
+        "soxx": {
+            "price": soxx_close,
+        },
+    }
+
+
+def build_account_state_from_snapshot(snapshot) -> dict[str, object]:
+    available_cash = float(
+        snapshot.metadata.get("cash_available_for_trading", snapshot.buying_power or 0.0) or 0.0
     )
+    market_values = {symbol: 0.0 for symbol in MANAGED_SYMBOLS}
+    quantities = {symbol: 0 for symbol in MANAGED_SYMBOLS}
+    sellable_quantities = {symbol: 0 for symbol in MANAGED_SYMBOLS}
+    for position in snapshot.positions:
+        if position.symbol not in market_values:
+            continue
+        market_values[position.symbol] = float(position.market_value)
+        quantity = int(position.quantity)
+        quantities[position.symbol] = quantity
+        sellable_quantities[position.symbol] = quantity
+    return {
+        "available_cash": available_cash,
+        "market_values": market_values,
+        "quantities": quantities,
+        "sellable_quantities": sellable_quantities,
+        "total_strategy_equity": float(snapshot.total_equity),
+    }
+
+
+def resolve_rebalance_plan(*, qqq_history, snapshot):
+    evaluation_inputs = {
+        "signal_text_fn": signal_text,
+        "translator": t,
+    }
+    if "qqq_history" in AVAILABLE_INPUTS:
+        evaluation_inputs["qqq_history"] = qqq_history
+    if "indicators" in AVAILABLE_INPUTS:
+        evaluation_inputs["indicators"] = qqq_history
+    if "snapshot" in AVAILABLE_INPUTS:
+        evaluation_inputs["snapshot"] = snapshot
+    if "account_state" in AVAILABLE_INPUTS:
+        evaluation_inputs["account_state"] = build_account_state_from_snapshot(snapshot)
+    evaluation = STRATEGY_RUNTIME.evaluate(**evaluation_inputs)
     return map_strategy_decision_to_plan(
         evaluation.decision,
         snapshot=snapshot,
