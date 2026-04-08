@@ -61,6 +61,7 @@ def install_stub_modules():
         },
         managed_symbols=("TQQQ", "BOXX", "SPYI", "QQQI"),
         benchmark_symbol="QQQ",
+        runtime_adapter=types.SimpleNamespace(available_inputs=frozenset({"qqq_history", "snapshot"})),
         evaluate=lambda **_kwargs: None,
     )
 
