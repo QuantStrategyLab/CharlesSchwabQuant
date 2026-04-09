@@ -14,6 +14,7 @@ QPK_SRC = ROOT.parent / "QuantPlatformKit" / "src"
 if str(QPK_SRC) not in sys.path:
     sys.path.insert(0, str(QPK_SRC))
 SCRIPT_PATH = ROOT / "scripts" / "print_strategy_profile_status.py"
+SWITCH_PLAN_SCRIPT_PATH = ROOT / "scripts" / "print_strategy_switch_env_plan.py"
 
 
 from runtime_config_support import (  # noqa: E402
@@ -185,6 +186,40 @@ class RuntimeConfigSupportTests(unittest.TestCase):
         self.assertIn("Global ETF Rotation", result.stdout)
         self.assertIn("Russell 1000 Multi-Factor", result.stdout)
         self.assertIn("QQQ Tech Enhancement", result.stdout)
+
+    def test_print_strategy_switch_env_plan_for_global_etf_rotation(self):
+        result = subprocess.run(
+            [sys.executable, str(SWITCH_PLAN_SCRIPT_PATH), "--profile", "global_etf_rotation", "--json"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        plan = json.loads(result.stdout)
+        self.assertEqual(plan["platform"], "schwab")
+        self.assertEqual(plan["canonical_profile"], "global_etf_rotation")
+        self.assertTrue(plan["eligible"])
+        self.assertTrue(plan["enabled"])
+        self.assertEqual(plan["set_env"]["STRATEGY_PROFILE"], "global_etf_rotation")
+        self.assertIn("SCHWAB_FEATURE_SNAPSHOT_PATH", plan["remove_if_present"])
+
+    def test_print_strategy_switch_env_plan_for_qqq_tech_enhancement(self):
+        result = subprocess.run(
+            [sys.executable, str(SWITCH_PLAN_SCRIPT_PATH), "--profile", "qqq_tech_enhancement", "--json"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        plan = json.loads(result.stdout)
+        self.assertEqual(plan["canonical_profile"], "qqq_tech_enhancement")
+        self.assertEqual(plan["set_env"]["SCHWAB_FEATURE_SNAPSHOT_PATH"], "<required>")
+        self.assertEqual(plan["set_env"]["SCHWAB_FEATURE_SNAPSHOT_MANIFEST_PATH"], "<required>")
+        self.assertTrue(
+            plan["set_env"]["SCHWAB_STRATEGY_CONFIG_PATH"].endswith(
+                "growth_pullback_qqq_tech_enhancement.json"
+            )
+        )
 
     def test_loads_feature_snapshot_env_for_tech_profile(self):
         with patch.dict(
