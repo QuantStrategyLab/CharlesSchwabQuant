@@ -167,7 +167,38 @@ class RuntimeConfigSupportTests(unittest.TestCase):
             text=True,
         )
 
-        self.assertEqual(json.loads(result.stdout), get_platform_profile_status_matrix())
+        rows = json.loads(result.stdout)
+        self.assertEqual(
+            [
+                {
+                    key: row[key]
+                    for key in (
+                        "canonical_profile",
+                        "display_name",
+                        "domain",
+                        "eligible",
+                        "enabled",
+                        "is_default",
+                        "is_rollback",
+                        "platform",
+                    )
+                }
+                for row in rows
+            ],
+            get_platform_profile_status_matrix(),
+        )
+        by_profile = {row["canonical_profile"]: row for row in rows}
+        self.assertEqual(by_profile["global_etf_rotation"]["profile_group"], "direct_runtime_inputs")
+        self.assertEqual(by_profile["global_etf_rotation"]["input_mode"], "market_history")
+        self.assertFalse(by_profile["global_etf_rotation"]["requires_snapshot_artifacts"])
+        self.assertFalse(by_profile["global_etf_rotation"]["requires_strategy_config_path"])
+        self.assertEqual(by_profile["qqq_tech_enhancement"]["profile_group"], "snapshot_backed")
+        self.assertEqual(by_profile["qqq_tech_enhancement"]["input_mode"], "feature_snapshot")
+        self.assertTrue(by_profile["qqq_tech_enhancement"]["requires_snapshot_artifacts"])
+        self.assertTrue(by_profile["qqq_tech_enhancement"]["requires_strategy_config_path"])
+        self.assertFalse(
+            by_profile["russell_1000_multi_factor_defensive"]["requires_strategy_config_path"]
+        )
 
     def test_print_strategy_profile_status_table_contains_expected_headers(self):
         result = subprocess.run(
@@ -179,6 +210,9 @@ class RuntimeConfigSupportTests(unittest.TestCase):
 
         self.assertIn("canonical_profile", result.stdout)
         self.assertIn("display_name", result.stdout)
+        self.assertIn("profile_group", result.stdout)
+        self.assertIn("input_mode", result.stdout)
+        self.assertIn("requires_snapshot_artifacts", result.stdout)
         self.assertIn("tqqq_growth_income", result.stdout)
         self.assertIn("global_etf_rotation", result.stdout)
         self.assertIn("russell_1000_multi_factor_defensive", result.stdout)
@@ -200,6 +234,10 @@ class RuntimeConfigSupportTests(unittest.TestCase):
         self.assertEqual(plan["canonical_profile"], "global_etf_rotation")
         self.assertTrue(plan["eligible"])
         self.assertTrue(plan["enabled"])
+        self.assertEqual(plan["profile_group"], "direct_runtime_inputs")
+        self.assertEqual(plan["input_mode"], "market_history")
+        self.assertFalse(plan["requires_snapshot_artifacts"])
+        self.assertFalse(plan["requires_strategy_config_path"])
         self.assertEqual(plan["set_env"]["STRATEGY_PROFILE"], "global_etf_rotation")
         self.assertIn("SCHWAB_FEATURE_SNAPSHOT_PATH", plan["remove_if_present"])
 
@@ -213,6 +251,10 @@ class RuntimeConfigSupportTests(unittest.TestCase):
 
         plan = json.loads(result.stdout)
         self.assertEqual(plan["canonical_profile"], "qqq_tech_enhancement")
+        self.assertEqual(plan["profile_group"], "snapshot_backed")
+        self.assertEqual(plan["input_mode"], "feature_snapshot")
+        self.assertTrue(plan["requires_snapshot_artifacts"])
+        self.assertTrue(plan["requires_strategy_config_path"])
         self.assertEqual(plan["set_env"]["SCHWAB_FEATURE_SNAPSHOT_PATH"], "<required>")
         self.assertEqual(plan["set_env"]["SCHWAB_FEATURE_SNAPSHOT_MANIFEST_PATH"], "<required>")
         self.assertTrue(
