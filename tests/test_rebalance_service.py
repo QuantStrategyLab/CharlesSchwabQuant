@@ -38,6 +38,14 @@ class RebalanceServiceTests(unittest.TestCase):
             "目标股票仓位=60.0% 实际股票仓位=60.0% 入选标的数=8 前排标的=CIEN(0.92)"
         )
 
+    def test_translator_localizes_semiconductor_trend_status_for_zh(self):
+        translate = build_translator("zh")
+        self.assertEqual(translate("market_status_risk_on", asset="SOXL"), "🚀 风险开启（SOXL）")
+        self.assertEqual(
+            translate("signal_risk_on", window=150, ratio="40.2%"),
+            "SOXL 站上 150 日均线，持有 SOXL，交易层风险仓位 40.2%",
+        )
+
     def test_run_strategy_core_uses_managed_wrappers(self):
         sent_messages = []
         observed = {}

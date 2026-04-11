@@ -20,6 +20,8 @@ _ZH_REASON_REPLACEMENTS = (
     ("feature_snapshot_config_name_mismatch", "快照配置名不匹配"),
     ("feature_snapshot_config_path_mismatch", "快照配置路径不匹配"),
     ("feature_snapshot_contract_version_mismatch", "快照契约版本不匹配"),
+    ("RISK-ON", "风险开启"),
+    ("DE-LEVER", "降杠杆"),
     ("regime=hard_defense", "市场阶段=强防御"),
     ("regime=soft_defense", "市场阶段=软防御"),
     ("regime=risk_on", "市场阶段=进攻"),
