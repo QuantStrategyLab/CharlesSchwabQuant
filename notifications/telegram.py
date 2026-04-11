@@ -21,7 +21,7 @@ I18N = {
         "error_header": "🚨 【策略异常】",
         "strategy_label": "🧭 策略: {name}",
         "signal_label": "信号",
-        "dry_run_banner": "🧪 仅 dry-run，本轮不提交真实订单",
+        "dry_run_banner": "🧪 模拟运行，本轮不提交真实订单",
         "dashboard_label": "📊 资产看板",
         "equity": "净值",
         "buying_power": "购买力",
