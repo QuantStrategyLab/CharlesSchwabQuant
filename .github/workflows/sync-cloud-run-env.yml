@@ -108,6 +108,9 @@ jobs:
               output.write(
                   f"requires_strategy_config_path={str(bool(selected.get('requires_strategy_config_path'))).lower()}\n"
               )
+              output.write(
+                  f"config_source_policy={str(selected.get('config_source_policy') or 'none')}\n"
+              )
           PY
 
       - name: Validate env sync inputs
@@ -116,6 +119,7 @@ jobs:
           REQUIRES_SNAPSHOT_ARTIFACTS: ${{ steps.strategy_requirements.outputs.requires_snapshot_artifacts }}
           REQUIRES_SNAPSHOT_MANIFEST_PATH: ${{ steps.strategy_requirements.outputs.requires_snapshot_manifest_path }}
           REQUIRES_STRATEGY_CONFIG_PATH: ${{ steps.strategy_requirements.outputs.requires_strategy_config_path }}
+          CONFIG_SOURCE_POLICY: ${{ steps.strategy_requirements.outputs.config_source_policy }}
         run: |
           set -euo pipefail
 
@@ -153,7 +157,9 @@ jobs:
             missing_vars+=("SCHWAB_FEATURE_SNAPSHOT_MANIFEST_PATH")
           fi
 
-          if [ "${REQUIRES_STRATEGY_CONFIG_PATH:-}" = "true" ] && [ -z "${SCHWAB_STRATEGY_CONFIG_PATH:-}" ]; then
+          if [ "${REQUIRES_STRATEGY_CONFIG_PATH:-}" = "true" ] \
+            && [ "${CONFIG_SOURCE_POLICY:-}" = "env_only" ] \
+            && [ -z "${SCHWAB_STRATEGY_CONFIG_PATH:-}" ]; then
             missing_vars+=("SCHWAB_STRATEGY_CONFIG_PATH")
           fi
 

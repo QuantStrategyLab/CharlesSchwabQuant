@@ -42,7 +42,11 @@ def build_switch_plan(profile: str) -> dict[str, object]:
         platform_id=SCHWAB_PLATFORM,
     )
     requires_feature_snapshot = bool(runtime_requirements["requires_snapshot_artifacts"])
+    requires_snapshot_manifest_path = bool(
+        runtime_requirements["requires_snapshot_manifest_path"]
+    )
     requires_strategy_config_path = bool(runtime_requirements["requires_strategy_config_path"])
+    config_source_policy = str(runtime_requirements.get("config_source_policy") or "none")
 
     set_env: dict[str, str] = {"STRATEGY_PROFILE": definition.profile}
     keep_env: list[str] = []
@@ -54,9 +58,19 @@ def build_switch_plan(profile: str) -> dict[str, object]:
 
     if requires_feature_snapshot:
         set_env["SCHWAB_FEATURE_SNAPSHOT_PATH"] = "<required>"
-        set_env["SCHWAB_FEATURE_SNAPSHOT_MANIFEST_PATH"] = "<required>"
-        if requires_strategy_config_path and artifact_paths.bundled_config_path is not None:
-            set_env["SCHWAB_STRATEGY_CONFIG_PATH"] = str(artifact_paths.bundled_config_path)
+        if requires_snapshot_manifest_path:
+            set_env["SCHWAB_FEATURE_SNAPSHOT_MANIFEST_PATH"] = "<required>"
+        else:
+            remove_if_present.append("SCHWAB_FEATURE_SNAPSHOT_MANIFEST_PATH")
+        if requires_strategy_config_path and config_source_policy == "env_only":
+            set_env["SCHWAB_STRATEGY_CONFIG_PATH"] = "<required>"
+        elif requires_strategy_config_path and config_source_policy == "bundled_or_env":
+            remove_if_present.append("SCHWAB_STRATEGY_CONFIG_PATH")
+            notes.append(
+                "SCHWAB_STRATEGY_CONFIG_PATH is optional for bundled_or_env profiles; leave it unset to use the packaged canonical config."
+            )
+        elif requires_strategy_config_path:
+            set_env["SCHWAB_STRATEGY_CONFIG_PATH"] = "<required>"
         else:
             remove_if_present.append("SCHWAB_STRATEGY_CONFIG_PATH")
     else:
