@@ -298,13 +298,11 @@ class RuntimeConfigSupportTests(unittest.TestCase):
         self.assertEqual(plan["input_mode"], "feature_snapshot")
         self.assertTrue(plan["requires_snapshot_artifacts"])
         self.assertTrue(plan["requires_strategy_config_path"])
+        self.assertEqual(plan["config_source_policy"], "bundled_or_env")
         self.assertEqual(plan["set_env"]["SCHWAB_FEATURE_SNAPSHOT_PATH"], "<required>")
         self.assertEqual(plan["set_env"]["SCHWAB_FEATURE_SNAPSHOT_MANIFEST_PATH"], "<required>")
-        self.assertTrue(
-            plan["set_env"]["SCHWAB_STRATEGY_CONFIG_PATH"].endswith(
-                "growth_pullback_tech_communication_pullback_enhancement.json"
-            )
-        )
+        self.assertNotIn("SCHWAB_STRATEGY_CONFIG_PATH", plan["set_env"])
+        self.assertIn("SCHWAB_STRATEGY_CONFIG_PATH", plan["remove_if_present"])
 
     def test_loads_feature_snapshot_env_for_tech_profile(self):
         with patch.dict(
