@@ -32,6 +32,8 @@ class NotificationTests(unittest.TestCase):
         translate = build_translator("zh")
         self.assertEqual(translate("equity"), "净值")
         self.assertEqual(translate("holdings_title"), "💼 持仓")
+        self.assertEqual(translate("benchmark_title", symbol="QQQ"), "📈 QQQ 基准")
+        self.assertEqual(translate("benchmark_exit", value="598.38"), "退出线: 598.38")
         self.assertEqual(translate("market_status_blend_gate_risk_on", asset="SOXX+SOXL"), "🚀 风险开启（SOXX+SOXL）")
         self.assertEqual(
             translate(
