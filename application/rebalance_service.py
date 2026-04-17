@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import re
 
 from quant_platform_kit.common.models import OrderIntent
 
@@ -79,6 +80,7 @@ _ZH_REASON_REPLACEMENTS = (
     ("fail_closed", "关闭执行"),
     ("reason=", "原因="),
 )
+_DETAIL_FIELD_SPLIT_RE = re.compile(r"\s+(?=[^\s=:：]+[=:：])")
 
 
 def _plan_portfolio(plan):
@@ -117,6 +119,49 @@ def _localize_notification_text(text, *, translator):
     for source, target in _ZH_REASON_REPLACEMENTS:
         localized = localized.replace(source, target)
     return localized
+
+
+def _split_detail_segment(text: str) -> list[str]:
+    value = str(text or "").strip()
+    if not value:
+        return []
+    if "=" not in value and ":" not in value and "：" not in value:
+        return [value]
+    return [part.strip() for part in _DETAIL_FIELD_SPLIT_RE.split(value) if part.strip()]
+
+
+def _split_labeled_text(text: str) -> list[str]:
+    segments = [segment.strip() for segment in str(text or "").split(" | ") if segment.strip()]
+    if not segments:
+        return []
+    lines = [segments[0]]
+    for segment in segments[1:]:
+        lines.extend(_split_detail_segment(segment))
+    return lines
+
+
+def _format_label_value_lines(label: str, value: str) -> list[str]:
+    parts = _split_labeled_text(value)
+    if not parts:
+        return []
+    lines = [f"{label}: {parts[0]}"]
+    lines.extend(f"  - {part}" for part in parts[1:])
+    return lines
+
+
+def _format_benchmark_lines(execution, *, translator) -> list[str]:
+    if not _has_benchmark_context(execution):
+        return []
+    benchmark_symbol = str(execution["benchmark_symbol"])
+    benchmark_price = float(execution["benchmark_price"])
+    long_trend_value = float(execution["long_trend_value"])
+    exit_line = float(execution["exit_line"])
+    return [
+        translator("benchmark_title", symbol=benchmark_symbol),
+        f"  - {translator('benchmark_price', symbol=benchmark_symbol, value=f'{benchmark_price:.2f}')}",
+        f"  - {translator('benchmark_ma200', value=f'{long_trend_value:.2f}')}",
+        f"  - {translator('benchmark_exit', value=f'{exit_line:.2f}')}",
+    ]
 
 
 def _is_holding_segment(segment: str) -> bool:
@@ -454,15 +499,14 @@ def run_strategy_core(
     separator = str(execution["separator"])
     total_equity = float(portfolio["total_equity"])
     portfolio_rows = tuple(portfolio["portfolio_rows"])
-    benchmark_symbol = str(execution["benchmark_symbol"])
-    benchmark_price = float(execution["benchmark_price"])
-    long_trend_value = float(execution["long_trend_value"])
-    exit_line = float(execution["exit_line"])
-    status_line = f"📊 {status_display}\n" if status_display else ""
+    status_line = "\n".join(_split_labeled_text(f"📊 {status_display}")) + "\n" if status_display else ""
     dashboard_block = f"{dashboard_text}\n{separator}\n" if dashboard_text else ""
-    benchmark_line = ""
-    if _has_benchmark_context(execution):
-        benchmark_line = f"{benchmark_symbol}: {benchmark_price:.2f} | MA200: {long_trend_value:.2f} | Exit: {exit_line:.2f}\n"
+    benchmark_lines = _format_benchmark_lines(execution, translator=translator)
+    benchmark_block = "\n".join(benchmark_lines) + "\n" if benchmark_lines else ""
+    trade_signal_lines = _format_label_value_lines(f"📊 {translator('signal_label')}", signal_display)
+    trade_signal_block = "\n".join(trade_signal_lines)
+    heartbeat_signal_lines = _format_label_value_lines(f"🎯 {translator('signal_label')}", signal_display)
+    heartbeat_signal_block = "\n".join(heartbeat_signal_lines)
 
     if trade_logs:
         dry_run_line = f"{translator('dry_run_banner')}\n" if dry_run_only else ""
@@ -472,7 +516,7 @@ def run_strategy_core(
             f"{dry_run_line}"
             f"{extra_notification_block}"
             f"{status_line}"
-            f"📊 {translator('signal_label')}: {signal_display}\n\n"
+            f"{trade_signal_block}\n\n"
             f"{dashboard_block}"
             + "\n".join(trade_logs)
         )
@@ -488,8 +532,8 @@ def run_strategy_core(
             + "\n".join(holdings_lines) + "\n"
             f"{separator}\n"
             f"{status_line}"
-            f"🎯 {translator('signal_label')}: {signal_display}\n"
-            f"{benchmark_line}"
+            f"{heartbeat_signal_block}\n"
+            f"{benchmark_block}"
             f"{separator}\n"
             f"{translator('no_trades')}"
         )
